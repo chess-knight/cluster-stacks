@@ -2,12 +2,14 @@ export KUBECONFIG=$PWD/.mgt-cluster-kubeconfig.yaml
 
 export PATH=$PWD/hack/tools/bin:$PATH
 
-export PROVIDER=docker
+export PROVIDER=openstack
+
+export OPENSTACK_CLOUD_YAML_B64=
 
 # Versions
 export K8S_VERSION=1-27
 export CAPI_VERSION=v1.5.1
-export CAPD_VERSION=$CAPI_VERSION
+export CAPO_VERSION=v0.8.0
 
 # Names
 export NAMESPACE=scs-cs
