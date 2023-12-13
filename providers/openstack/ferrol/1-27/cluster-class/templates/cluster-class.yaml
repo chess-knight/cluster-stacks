@@ -12,14 +12,14 @@ spec:
       namespace: {{ .Release.Namespace }}
     machineInfrastructure:
       ref:
-        kind: DockerMachineTemplate
-        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-        name: {{ .Release.Name }}-{{ .Chart.Version }}-machinetemplate-docker
+        kind: OpenStackMachineTemplate
+        apiVersion: infrastructure.cluster.x-k8s.io/v1alpha7
+        name: {{ .Release.Name }}-{{ .Chart.Version }}-control-plane-machinetemplate-openstack
         namespace: {{ .Release.Namespace }}
   infrastructure:
     ref:
-      apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-      kind: DockerClusterTemplate
+      apiVersion: infrastructure.cluster.x-k8s.io/v1alpha7
+      kind: OpenStackClusterTemplate
       name: {{ .Release.Name }}-{{ .Chart.Version }}-cluster
       namespace: {{ .Release.Namespace }}
   workers:
@@ -30,13 +30,13 @@ spec:
           ref:
             apiVersion: bootstrap.cluster.x-k8s.io/v1beta1
             kind: KubeadmConfigTemplate
-            name: {{ .Release.Name }}-{{ .Chart.Version }}-worker-bootstraptemplate-docker
+            name: {{ .Release.Name }}-{{ .Chart.Version }}-worker-bootstraptemplate-openstack
             namespace: {{ .Release.Namespace }}
         infrastructure:
           ref:
-            apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-            kind: DockerMachineTemplate
-            name: {{ .Release.Name }}-{{ .Chart.Version }}-machinetemplate-docker
+            apiVersion: infrastructure.cluster.x-k8s.io/v1alpha7
+            kind: OpenStackMachineTemplate
+            name: {{ .Release.Name }}-{{ .Chart.Version }}-worker-machinetemplate-openstack
             namespace: {{ .Release.Namespace }}
   variables:
   - name: imageRepository
@@ -62,40 +62,26 @@ spec:
         path: "/spec/template/spec/kubeadmConfigSpec/clusterConfiguration/imageRepository"
         valueFrom:
           variable: imageRepository
-  - name: customImage
-    description: "Sets the container image that is used for running dockerMachines for the controlplane and worker machineDeployments."
+  - name: image
+    description: "Sets the container image that is used for running openstackMachines for the controlplane and worker machineDeployments."
     definitions:
     - selector:
-        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-        kind: DockerMachineTemplate
+        apiVersion: infrastructure.cluster.x-k8s.io/v1alpha7
+        kind: OpenStackMachineTemplate
         matchResources:
           machineDeploymentClass:
             names:
             - workeramd64
       jsonPatches:
       - op: add
-        path: "/spec/template/spec/customImage"
-        value: {{ (index .Values.images.controlPlane 0).name }}
+        path: "/spec/template/spec/image"
+        value: {{ (index .Values.images.worker 0).name }}
     - selector:
-        apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-        kind: DockerMachineTemplate
+        apiVersion: infrastructure.cluster.x-k8s.io/v1alpha7
+        kind: OpenStackMachineTemplate
         matchResources:
           controlPlane: true
       jsonPatches:
       - op: add
-        path: "/spec/template/spec/customImage"
+        path: "/spec/template/spec/image"
         value: {{ (index .Values.images.controlPlane 0).name }}
-  - name: DockerMachineTemplateWorker
-    description: "Sets the container image that is used for running dockerMachines for the worker machineDeployments."
-    definitions:
-      - selector:
-          apiVersion: infrastructure.cluster.x-k8s.io/v1beta1
-          kind: DockerMachineTemplate
-          matchResources:
-            machineDeploymentClass:
-              names:
-                - workeramd64
-        jsonPatches:
-          - op: add
-            path: "/spec/template/spec/customImage"
-            value: {{ (index .Values.images.worker 0).name }}

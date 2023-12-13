@@ -96,8 +96,8 @@ all-tools: $(KIND) $(CTLPTL) $(KIND) $(ENVSUBST) $(KUSTOMIZE) $(CLUSTERCTL) $(HE
 
 .PHONY: basics
 basics: $(KIND) $(CTLPTL) $(KIND) $(ENVSUBST) $(KUSTOMIZE) $(CLUSTERCTL)
-	@./hack/ensure-env-variables.sh CAPI_VERSION CAPD_VERSION NAMESPACE \
-	    CLUSTER_CLASS_NAME K8S_VERSION CLUSTER_NAME PROVIDER
+	@./hack/ensure-env-variables.sh CAPI_VERSION CAPO_VERSION NAMESPACE \
+	    CLUSTER_CLASS_NAME K8S_VERSION CLUSTER_NAME PROVIDER OPENSTACK_CLOUD_YAML_B64
 	@mkdir -p build
 
 ##@ Development
@@ -112,7 +112,7 @@ kind-cluster: basics ## Creates kind-dev Cluster
 
 .PHONY: watch
 watch: ## Show the current state of the CRDs and events.
-	watch -c "kubectl -n $(NAMESPACE) get cluster; echo; kubectl -n $(NAMESPACE) get machine; echo; kubectl -n $(NAMESPACE) get dockermachine; echo; echo Events; kubectl -A get events --sort-by=metadata.creationTimestamp | tail -5"
+	watch -c "kubectl -n $(NAMESPACE) get cluster; echo; kubectl -n $(NAMESPACE) get machine; echo; kubectl -n $(NAMESPACE) get openstackmachine; echo; echo Events; kubectl -A get events --sort-by=metadata.creationTimestamp | tail -5"
 
 ##@ Clean
 #########
@@ -183,13 +183,13 @@ $(ARTIFACTS):
 # cluster-class #
 #################
 
-.PHONY: re-apply-cluster-class-docker
-re-apply-cluster-class-docker: ensure-connected-to-mgt-cluster basics ## Re-apply only a cluster-class.
-	$(HELM) -n $(NAMESPACE) template docker-$(CLUSTER_CLASS_NAME)-$(K8S_VERSION) providers/docker/$(CLUSTER_CLASS_NAME)/$(K8S_VERSION)/cluster-class | kubectl -n $(NAMESPACE) apply -f -
+.PHONY: re-apply-cluster-class-openstack
+re-apply-cluster-class-openstack: ensure-connected-to-mgt-cluster basics ## Re-apply only a cluster-class.
+	$(HELM) -n $(NAMESPACE) template openstack-$(CLUSTER_CLASS_NAME)-$(K8S_VERSION) providers/openstack/$(CLUSTER_CLASS_NAME)/$(K8S_VERSION)/cluster-class | kubectl -n $(NAMESPACE) apply -f -
 
-.PHONY: delete-cluster-class-docker
-delete-cluster-class-docker: ensure-connected-to-mgt-cluster basics ## Delete a cluster-class.
-	$(HELM) -n $(NAMESPACE) template docker-$(CLUSTER_CLASS_NAME)-$(K8S_VERSION) providers/docker/$(CLUSTER_CLASS_NAME)/$(K8S_VERSION)/cluster-class | kubectl -n $(NAMESPACE) delete -f -
+.PHONY: delete-cluster-class-openstack
+delete-cluster-class-openstack: ensure-connected-to-mgt-cluster basics ## Delete a cluster-class.
+	$(HELM) -n $(NAMESPACE) template openstack-$(CLUSTER_CLASS_NAME)-$(K8S_VERSION) providers/openstack/$(CLUSTER_CLASS_NAME)/$(K8S_VERSION)/cluster-class | kubectl -n $(NAMESPACE) delete -f -
 
 ##@ cluster-addon
 #################
@@ -197,14 +197,14 @@ delete-cluster-class-docker: ensure-connected-to-mgt-cluster basics ## Delete a 
 #################
 
 ## working on cluster-addon
-.PHONY: generate-deps-cluster-addon-docker
-generate-deps-cluster-addon-docker: ensure-connected-to-mgt-cluster basics ## Build a cluster-class.
-	cd providers/docker/$(CLUSTER_CLASS_NAME)/$(K8S_VERSION)/cluster-addon && rm -rf ./charts/* && helm dependency update
+.PHONY: generate-deps-cluster-addon-openstack
+generate-deps-cluster-addon-openstack: ensure-connected-to-mgt-cluster basics ## Build a cluster-class.
+	cd providers/openstack/$(CLUSTER_CLASS_NAME)/$(K8S_VERSION)/cluster-addon && rm -rf ./charts/* && helm dependency update
 
-.PHONY: package-cluster-addon-docker
-package-cluster-addon-docker: ensure-connected-to-mgt-cluster basics ## Build a cluster-class.
+.PHONY: package-cluster-addon-openstack
+package-cluster-addon-openstack: ensure-connected-to-mgt-cluster basics ## Build a cluster-class.
 	@mkdir -p .helm
-	$(HELM) package providers/docker/$(CLUSTER_CLASS_NAME)/$(K8S_VERSION)/cluster-addon -d .helm
+	$(HELM) package providers/openstack/$(CLUSTER_CLASS_NAME)/$(K8S_VERSION)/cluster-addon -d .helm
 
 ##@ Main Targets
 ################
@@ -213,7 +213,7 @@ package-cluster-addon-docker: ensure-connected-to-mgt-cluster basics ## Build a 
 .PHONY: delete-bootstrap-cluster
 delete-bootstrap-cluster: ensure-connected-to-mgt-cluster basics ## Deletes Kind-dev Cluster
 	$(CTLPTL) delete cluster kind-scs-cluster-stacks
-	$(CTLPTL) delete registry cluster-stacks-registry
+	$(CTLPTL) delete registry scs-cluster-stacks-registry
 
 .PHONY: create-bootstrap-cluster
 create-bootstrap-cluster: basics kind-cluster ## Create mgt-cluster and install capi-stack.
@@ -224,39 +224,32 @@ create-bootstrap-cluster: basics kind-cluster ## Create mgt-cluster and install 
 	kubectl wait -n capi-kubeadm-control-plane-system deployment capi-kubeadm-control-plane-controller-manager --for=condition=Available --timeout=300s
 	kubectl wait -n capi-system deployment capi-controller-manager --for=condition=Available --timeout=300s
 
-.PHONY: install-provider-docker
-install-provider-docker: create-bootstrap-cluster  ## Install Docker Infrastructure provider.
+.PHONY: install-provider-openstack
+install-provider-openstack: create-bootstrap-cluster  ## Install OpenStack Infrastructure provider.
 	# hangs for ever waiting for cert-manger to get available if called twice.
-	if kubectl get deployments.apps -n capd-system capd-controller-manager > /dev/null 2>&1; then \
-	    echo "capd is already installed" ; \
+	if kubectl get deployments.apps -n capo-system capo-controller-manager > /dev/null 2>&1; then \
+	    echo "capo is already installed" ; \
 	else \
-	    echo "installing capd" ; \
-        DISABLE_VERSIONCHECK="true" $(CLUSTERCTL) init --infrastructure docker:$(CAPD_VERSION); \
+	    echo "installing capo" ; \
+        DISABLE_VERSIONCHECK="true" $(CLUSTERCTL) init --infrastructure openstack:$(CAPO_VERSION); \
 	fi
-	kubectl wait -n capd-system deployment capd-controller-manager --for=condition=Available --timeout=300s
+	kubectl wait -n capo-system deployment capo-controller-manager --for=condition=Available --timeout=300s
 
-.PHONY: prepare-provider-docker
-prepare-provider-docker: install-provider-docker ## Prepares the Docker Environment.
+.PHONY: prepare-provider-openstack
+prepare-provider-openstack: install-provider-openstack ## Prepares the OpenStack Environment.
 	kubectl create namespace $(NAMESPACE) --dry-run=client -o yaml | kubectl apply -f -
 
-.PHONY: apply-cluster-class-docker
-apply-cluster-class-docker: $(HELM) prepare-provider-docker package-cluster-addon-docker ## Applies all resources and node-images.
-	$(HELM) -n $(NAMESPACE) template docker-$(CLUSTER_CLASS_NAME)-$(K8S_VERSION) \
-	    providers/docker/$(CLUSTER_CLASS_NAME)/$(K8S_VERSION)/cluster-class > build/cluster-class-created.yaml
+.PHONY: apply-cluster-class-openstack
+apply-cluster-class-openstack: $(HELM) prepare-provider-openstack package-cluster-addon-openstack ## Applies all resources and node-images.
+	$(HELM) -n $(NAMESPACE) template openstack-$(CLUSTER_CLASS_NAME)-$(K8S_VERSION) \
+	    providers/openstack/$(CLUSTER_CLASS_NAME)/$(K8S_VERSION)/cluster-class > build/cluster-class-created.yaml
 	kubectl -n $(NAMESPACE) apply -f build/cluster-class-created.yaml
-	# create the docker image. Start first build in background to
-	docker build -t docker-ferrol-1-27-controlplaneamd64-v1:dev \
-	    --file providers/docker/$(CLUSTER_CLASS_NAME)/$(K8S_VERSION)/node-images/Dockerfile.controlplane \
-	     providers/docker/$(CLUSTER_CLASS_NAME)/$(K8S_VERSION)/node-images/ & \
-	  docker build -t docker-ferrol-1-27-workeramd64-v1:dev \
-	  --file providers/docker/$(CLUSTER_CLASS_NAME)/$(K8S_VERSION)/node-images/Dockerfile.worker \
-	  providers/docker/$(CLUSTER_CLASS_NAME)/$(K8S_VERSION)/node-images/
 	@echo ""
 	@echo "Done"
 
 .PHONY: create-workload-cluster
-create-workload-cluster: apply-cluster-class-docker basics  ## Creates a workload cluster.
-	cat providers/docker/$(CLUSTER_CLASS_NAME)/$(K8S_VERSION)/topology-$(PROVIDER).yaml | $(ENVSUBST) - > build/topology.yaml
+create-workload-cluster: apply-cluster-class-openstack basics  ## Creates a workload cluster.
+	cat providers/openstack/$(CLUSTER_CLASS_NAME)/$(K8S_VERSION)/topology-$(PROVIDER).yaml | $(ENVSUBST) - > build/topology.yaml
 	kubectl apply -f build/topology.yaml
 	# Wait for the kubeconfig to become available.
 	${TIMEOUT} --foreground 5m bash -c "while ! kubectl -n $(NAMESPACE) get secrets | grep $(CLUSTER_NAME)-kubeconfig; do date; echo waiting for secret $(CLUSTER_NAME)-kubeconfig; sleep 1; done"
@@ -282,22 +275,22 @@ install-addons-in-workload-cluster: $(HELM)
 	@# Replace the `sed` with `--dry-run=server` when helm supports --dry-run=server.
 	@# It should be included in helm 3.13.0
 	KUBECONFIG=.kubeconfigs/.$(CLUSTER_NAME)-kubeconfig helm template  \
-	   ./providers/docker/$(CLUSTER_CLASS_NAME)/$(K8S_VERSION)/cluster-addon \
+	   ./providers/openstack/$(CLUSTER_CLASS_NAME)/$(K8S_VERSION)/cluster-addon \
 	   | sed 's#apiVersion: policy/v1beta1#apiVersion: policy/v1#' \
 	   > build/cluster-addons-$(CLUSTER_NAME).yaml
 	KUBECONFIG=.kubeconfigs/.$(CLUSTER_NAME)-kubeconfig kubectl apply -f build/cluster-addons-$(CLUSTER_NAME).yaml
 
 
-.PHONY: release-docker
-release-docker: clean-release $(HELM) ## Builds and push container images using the latest git tag for the commit.
+.PHONY: release-openstack
+release-openstack: clean-release $(HELM) ## Builds and push container images using the latest git tag for the commit.
 	# @if [ -z "${RELEASE_TAG}" ]; then echo "RELEASE_TAG is not set"; exit 1; fi
 	# @if ! [ -z "$$(git status --porcelain)" ]; then echo "Your local git repository contains uncommitted changes, use git clean before proceeding."; exit 1; fi
 	# git checkout "${RELEASE_TAG}"
 	@./hack/ensure-env-variables.sh RELEASE_CLUSTER_CLASS RELEASE_KUBERNETES_VERSION
 	@mkdir -p .release
-	cp providers/docker/$(RELEASE_CLUSTER_CLASS)/$(RELEASE_KUBERNETES_VERSION)/cluster-addon-values.yaml .release/
-	cp providers/docker/$(RELEASE_CLUSTER_CLASS)/$(RELEASE_KUBERNETES_VERSION)/node-images.yaml .release/
-	cp providers/docker/$(RELEASE_CLUSTER_CLASS)/$(RELEASE_KUBERNETES_VERSION)/metadata.yaml .release/
-	cp providers/docker/$(RELEASE_CLUSTER_CLASS)/$(RELEASE_KUBERNETES_VERSION)/topology-* .release/
-	$(HELM) package providers/docker/$(RELEASE_CLUSTER_CLASS)/$(RELEASE_KUBERNETES_VERSION)/cluster-addon -d .release/
-	$(HELM) package providers/docker/$(RELEASE_CLUSTER_CLASS)/$(RELEASE_KUBERNETES_VERSION)/cluster-class -d .release/
+	cp providers/openstack/$(RELEASE_CLUSTER_CLASS)/$(RELEASE_KUBERNETES_VERSION)/cluster-addon-values.yaml .release/
+	cp providers/openstack/$(RELEASE_CLUSTER_CLASS)/$(RELEASE_KUBERNETES_VERSION)/node-images.yaml .release/
+	cp providers/openstack/$(RELEASE_CLUSTER_CLASS)/$(RELEASE_KUBERNETES_VERSION)/metadata.yaml .release/
+	cp providers/openstack/$(RELEASE_CLUSTER_CLASS)/$(RELEASE_KUBERNETES_VERSION)/topology-* .release/
+	$(HELM) package providers/openstack/$(RELEASE_CLUSTER_CLASS)/$(RELEASE_KUBERNETES_VERSION)/cluster-addon -d .release/
+	$(HELM) package providers/openstack/$(RELEASE_CLUSTER_CLASS)/$(RELEASE_KUBERNETES_VERSION)/cluster-class -d .release/
