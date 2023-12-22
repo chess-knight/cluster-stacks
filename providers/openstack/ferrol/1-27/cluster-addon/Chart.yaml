@@ -4,7 +4,7 @@ description: |
   This chart installs and configures:
   * Openstack Ferrol Cluster Class
 name: openstack-ferrol-1-27-cluster-addon
-version: "v1"
+version: "v2"
 maintainers:
   - name: dNation
     email: cloud@dNation.cloud
