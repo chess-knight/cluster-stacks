@@ -11,14 +11,14 @@ spec:
       cidrBlocks: ["192.168.0.0/16"]
     serviceDomain: "cluster.local"
   topology:
-    class: openstack-ferrol-1-27-v2
+    class: openstack-ferrol-1-27-v3
     controlPlane:
       metadata: {}
       replicas: 1
     variables:
       - name: imageRepository
         value: ""
-    version: v1.27.5
+    version: v1.27.8
     workers:
       machineDeployments:
         - class: workeramd64
